@@ -1,17 +1,22 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
-	"strings"
 
+	"github.com/flashbots/prometheus-sns-lambda-slack/config"
+	"github.com/flashbots/prometheus-sns-lambda-slack/logutils"
 	"github.com/urfave/cli/v2"
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
 var (
 	version = "development"
+)
+
+var (
+	ErrFailedToSetupLogging = errors.New("failed to setup logging")
 )
 
 const (
@@ -19,10 +24,14 @@ const (
 )
 
 func main() {
-	var logFormat, logLevel string
+	cfg := &config.Config{
+		Processor: config.Processor{
+			IgnoreRules: make(map[string]struct{}),
+		},
+	}
 
 	flagLogLevel := &cli.StringFlag{
-		Destination: &logLevel,
+		Destination: &cfg.Log.Level,
 		EnvVars:     []string{"LOG_LEVEL"},
 		Name:        "log-level",
 		Usage:       "logging level",
@@ -30,7 +39,7 @@ func main() {
 	}
 
 	flagLogMode := &cli.StringFlag{
-		Destination: &logFormat,
+		Destination: &cfg.Log.Mode,
 		EnvVars:     []string{"LOG_MODE"},
 		Name:        "log-mode",
 		Usage:       "logging mode",
@@ -53,18 +62,21 @@ func main() {
 		},
 
 		Before: func(ctx *cli.Context) error {
-			err := setupLogger(logLevel, logFormat)
+			l, err := logutils.NewLogger(&cfg.Log)
 			if err != nil {
-				fmt.Fprintf(os.Stderr, "failed to configure the logging: %s\n", err)
+				return fmt.Errorf("%w: %w",
+					ErrFailedToSetupLogging, err,
+				)
 			}
-			return err
+			zap.ReplaceGlobals(l)
+			return nil
 		},
 
-		DefaultCommand: CommandLambda().Name,
+		DefaultCommand: "lambda",
 
 		Commands: []*cli.Command{
-			CommandLambda(),
-			Debug(),
+			CommandLambda(cfg),
+			Debug(cfg),
 		},
 	}
 	defer func() {
@@ -75,31 +87,4 @@ func main() {
 		fmt.Printf("\n%s had failed with error:\n\n  %s\n\n", appName, err)
 		os.Exit(1)
 	}
-}
-
-func setupLogger(level, mode string) error {
-	var config zap.Config
-	switch strings.ToLower(mode) {
-	case "dev":
-		config = zap.NewDevelopmentConfig()
-	case "prod":
-		config = zap.NewProductionConfig()
-	default:
-		return fmt.Errorf("invalid log-mode '%s'", mode)
-	}
-	config.EncoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
-
-	logLevel, err := zap.ParseAtomicLevel(level)
-	if err != nil {
-		return fmt.Errorf("invalid log-level '%s': %w", level, err)
-	}
-	config.Level = logLevel
-
-	l, err := config.Build()
-	if err != nil {
-		return fmt.Errorf("failed to build the logger: %w", err)
-	}
-	zap.ReplaceGlobals(l)
-
-	return nil
 }

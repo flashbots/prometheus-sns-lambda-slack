@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/flashbots/prometheus-sns-lambda-slack/config"
 	"github.com/flashbots/prometheus-sns-lambda-slack/logutils"
 	"github.com/flashbots/prometheus-sns-lambda-slack/types"
 	"github.com/slack-go/slack"
@@ -20,12 +21,12 @@ type SlackChannel struct {
 	slack       *slack.Client
 }
 
-func NewSlackChannel(cfg *types.Config) *SlackChannel {
+func NewSlackChannel(cfg *config.Config) *SlackChannel {
 	return &SlackChannel{
-		channelName: cfg.SlackChannel,
-		channelID:   cfg.SlackChannelID,
+		channelName: cfg.Slack.ChannelName,
+		channelID:   cfg.Slack.ChannelID,
 
-		slack: slack.New(cfg.SlackToken),
+		slack: slack.New(cfg.Slack.Token),
 	}
 }
 

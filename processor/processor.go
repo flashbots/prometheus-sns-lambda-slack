@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/flashbots/prometheus-sns-lambda-slack/config"
 	"github.com/flashbots/prometheus-sns-lambda-slack/db"
 	"github.com/flashbots/prometheus-sns-lambda-slack/logutils"
 	"github.com/flashbots/prometheus-sns-lambda-slack/publisher"
@@ -17,22 +18,22 @@ var (
 )
 
 type Processor struct {
+	db          *db.DB
 	ignoreRules map[string]struct{}
-
-	db    *db.DB
-	slack *publisher.SlackChannel
+	log         *zap.Logger
+	slack       *publisher.SlackChannel
 }
 
-func New(cfg *types.Config) (*Processor, error) {
-	d, err := db.New(cfg)
+func New(cfg *config.Config) (*Processor, error) {
+	d, err := db.New(cfg.Processor.DynamoDBName)
 	if err != nil {
 		return nil, err
 	}
 	return &Processor{
-		ignoreRules: cfg.IgnoreRules,
-
-		db:    d,
-		slack: publisher.NewSlackChannel(cfg),
+		db:          d,
+		ignoreRules: cfg.Processor.IgnoreRules,
+		log:         zap.L(),
+		slack:       publisher.NewSlackChannel(cfg),
 	}, nil
 }
 

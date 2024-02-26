@@ -10,7 +10,6 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/dynamodb"
 	"github.com/flashbots/prometheus-sns-lambda-slack/logutils"
-	"github.com/flashbots/prometheus-sns-lambda-slack/types"
 	"go.uber.org/zap"
 )
 
@@ -31,7 +30,7 @@ type DB struct {
 	name   string
 }
 
-func New(cfg *types.Config) (*DB, error) {
+func New(name string) (*DB, error) {
 	s, err := session.NewSession()
 	if err != nil {
 		return nil, err
@@ -39,7 +38,7 @@ func New(cfg *types.Config) (*DB, error) {
 
 	return &DB{
 		client: dynamodb.New(s),
-		name:   cfg.DynamoDBName,
+		name:   name,
 	}, nil
 }
 

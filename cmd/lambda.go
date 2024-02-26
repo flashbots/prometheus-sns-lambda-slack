@@ -1,27 +1,18 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
 	"errors"
 	"strings"
 
-	"github.com/aws/aws-lambda-go/events"
-	"github.com/aws/aws-lambda-go/lambda"
+	awslambda "github.com/aws/aws-lambda-go/lambda"
+	"github.com/flashbots/prometheus-sns-lambda-slack/config"
 	"github.com/flashbots/prometheus-sns-lambda-slack/processor"
-	"github.com/flashbots/prometheus-sns-lambda-slack/types"
-	"github.com/google/uuid"
 	"github.com/urfave/cli/v2"
-	"go.uber.org/zap"
 )
 
 var (
 	defaultSlackToken = "" // Injected at build-time
 	rawIgnoreRules    = ""
-
-	cfg = types.Config{
-		IgnoreRules: make(map[string]struct{}),
-	}
 )
 
 var (
@@ -31,14 +22,14 @@ var (
 	ErrSlackChannelMissing   = errors.New("Slack channel name must be configured")
 )
 
-func CommandLambda() *cli.Command {
+func CommandLambda(cfg *config.Config) *cli.Command {
 	return &cli.Command{
 		Name:  "lambda",
 		Usage: "Run lambda handler (default)",
 
 		Flags: []cli.Flag{
 			&cli.StringFlag{
-				Destination: &cfg.DynamoDBName,
+				Destination: &cfg.Processor.DynamoDBName,
 				EnvVars:     []string{"DYNAMODB_NAME"},
 				Name:        "dynamo-db-name",
 				Usage:       "the name of Dynamo DB to keep the track of alerts",
@@ -52,90 +43,63 @@ func CommandLambda() *cli.Command {
 			},
 
 			&cli.StringFlag{
-				Destination: &cfg.SlackChannel,
-				EnvVars:     []string{"SLACK_CHANNEL"},
-				Name:        "slack-channel",
+				Destination: &cfg.Slack.ChannelName,
+				EnvVars:     []string{"SLACK_CHANNEL_NAME"},
+				Name:        "slack-channel-name",
 				Usage:       "slack channel to publish the alerts to",
 			},
 
 			&cli.StringFlag{
-				Destination: &cfg.SlackChannelID,
+				Destination: &cfg.Slack.ChannelID,
 				EnvVars:     []string{"SLACK_CHANNEL_ID"},
 				Name:        "slack-channel-id",
 				Usage:       "slack channel ID to publish the alerts to",
 			},
 
 			&cli.StringFlag{
-				Destination: &cfg.SlackToken,
+				Destination: &cfg.Slack.Token,
 				EnvVars:     []string{"SLACK_TOKEN"},
 				Name:        "slack-token",
 				Usage:       "slack API token to be used",
 			},
 		},
 
-		Before: func(ctx *cli.Context) error {
-			if cfg.DynamoDBName == "" {
+		Before: func(_ *cli.Context) error {
+			// validate inputs
+			if cfg.Processor.DynamoDBName == "" {
 				return ErrDynamoDBMissing
 			}
-			if cfg.SlackToken == "" {
+			if cfg.Slack.Token == "" {
 				if defaultSlackToken == "" {
 					return ErrSlackAPITokenMissing
 				}
-				cfg.SlackToken = defaultSlackToken
+				cfg.Slack.Token = defaultSlackToken
 			}
-			if cfg.SlackChannel == "" {
+			if cfg.Slack.ChannelName == "" {
 				return ErrSlackChannelMissing
 			}
-			if cfg.SlackChannelID == "" {
+			if cfg.Slack.ChannelID == "" {
 				return ErrSlackChannelIDMissing
 			}
+
+			// parse the list of ignored rules
+			for _, r := range strings.Split(rawIgnoreRules, ",") {
+				if r == "" {
+					continue
+				}
+				cfg.Processor.IgnoreRules[strings.TrimSpace(r)] = struct{}{}
+			}
+
 			return nil
 		},
 
 		Action: func(ctx *cli.Context) error {
-			lambda.Start(Lambda)
+			p, err := processor.New(cfg)
+			if err != nil {
+				return err
+			}
+			awslambda.Start(p.Lambda)
 			return nil
 		},
 	}
-}
-
-func Lambda(clictx context.Context, event events.SNSEvent) error {
-	l := zap.L().With(
-		zap.String("event_id", uuid.New().String()),
-	)
-	defer l.Sync() //nolint:errcheck
-	cfg.Log = l
-
-	for _, r := range strings.Split(rawIgnoreRules, ",") {
-		if r == "" {
-			continue
-		}
-		cfg.IgnoreRules[strings.TrimSpace(r)] = struct{}{}
-	}
-
-	p, err := processor.New(&cfg)
-	if err != nil {
-		return err
-	}
-
-	errs := []error{}
-	for _, r := range event.Records {
-		var m types.Message
-		if err := json.Unmarshal([]byte(r.SNS.Message), &m); err != nil {
-			l.Error("Error un-marshalling message",
-				zap.String("message", strings.Replace(r.SNS.Message, "\n", " ", -1)),
-				zap.Error(err),
-			)
-			errs = append(errs, err)
-			continue
-		}
-		if err := p.ProcessMessage(clictx, r.SNS.TopicArn, &m); err != nil {
-			errs = append(errs, err)
-		}
-	}
-
-	if len(errs) != 0 {
-		return errors.Join(errs...)
-	}
-	return nil
 }

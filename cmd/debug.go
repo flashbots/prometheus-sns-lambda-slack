@@ -8,6 +8,7 @@ import (
 
 	"os"
 
+	"github.com/flashbots/prometheus-sns-lambda-slack/config"
 	"github.com/flashbots/prometheus-sns-lambda-slack/processor"
 	"github.com/flashbots/prometheus-sns-lambda-slack/types"
 	"github.com/google/uuid"
@@ -19,12 +20,14 @@ var (
 	snsTopicARN string
 )
 
-func Debug() *cli.Command {
+func Debug(cfg *config.Config) *cli.Command {
+	base := CommandLambda(cfg)
+
 	return &cli.Command{
 		Name:  "debug",
 		Usage: "Manually process lambda message (for example to debug slack token's scopes and permissions)",
 
-		Flags: append(CommandLambda().Flags, []cli.Flag{
+		Flags: append(base.Flags, []cli.Flag{
 			&cli.StringFlag{
 				Destination: &snsTopicARN,
 				EnvVars:     []string{"SNS_TOPIC_ARN"},
@@ -35,14 +38,14 @@ func Debug() *cli.Command {
 
 		ArgsUsage: "/path/to/file/with/message.json",
 
-		Before: func(ctx *cli.Context) error {
-			if err := CommandLambda().Before(ctx); err != nil {
+		Before: func(clictx *cli.Context) error {
+			if err := base.Before(clictx); err != nil {
 				return err
 			}
 			if snsTopicARN == "" {
 				return errors.New("The ARN of SNS topic to mimic must be provided")
 			}
-			if !ctx.Args().Present() {
+			if !clictx.Args().Present() {
 				return errors.New("Path to the message file is missing")
 			}
 			return nil
@@ -68,7 +71,7 @@ func Debug() *cli.Command {
 				ignoreRulesSet[strings.TrimSpace(r)] = struct{}{}
 			}
 
-			p, err := processor.New(&cfg)
+			p, err := processor.New(cfg)
 			if err != nil {
 				return err
 			}
