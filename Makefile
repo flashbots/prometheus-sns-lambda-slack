@@ -18,4 +18,4 @@ snapshot:
 .PHONY: release
 release:
 	@rm -rf ./dist
-	GITHUB_TOKEN=$$( gh auth token ) goreleaser release
+	@if [[ -z $${GITHUB_TOKEN} ]]; then GITHUB_TOKEN=$$( gh auth token ) goreleaser release; else goreleaser release; fi

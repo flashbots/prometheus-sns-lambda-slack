@@ -23,8 +23,36 @@ archives:
 checksum:
   name_template: 'checksums.txt'
 
-signs:
-  - artifacts: checksum
-
 release:
   prerelease: auto
+
+dockers:
+  - dockerfile: Dockerfile.goreleaser
+    goarch: amd64
+    goos: linux
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/amd64
+    image_templates:
+      - "flashbots/prometheus-sns-lambda-slack:{{ .Tag }}-amd64"
+      - "ghcr.io/flashbots/prometheus-sns-lambda-slack:{{ .Tag }}-amd64"
+
+  - dockerfile: Dockerfile.goreleaser
+    goarch: arm64
+    goos: linux
+    use: buildx
+    build_flag_templates:
+      - --platform=linux/arm64
+    image_templates:
+      - "flashbots/prometheus-sns-lambda-slack:{{ .Tag }}-arm64"
+      - "ghcr.io/flashbots/prometheus-sns-lambda-slack:{{ .Tag }}-arm64"
+
+docker_manifests:
+  - name_template: "flashbots/prometheus-sns-lambda-slack:{{ .Tag }}"
+    image_templates:
+      - "flashbots/prometheus-sns-lambda-slack:{{ .Tag }}-amd64"
+      - "flashbots/prometheus-sns-lambda-slack:{{ .Tag }}-arm64"
+  - name_template: "ghcr.io/flashbots/prometheus-sns-lambda-slack:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/flashbots/prometheus-sns-lambda-slack:{{ .Tag }}-amd64"
+      - "ghcr.io/flashbots/prometheus-sns-lambda-slack:{{ .Tag }}-arm64"
