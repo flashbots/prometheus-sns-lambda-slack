@@ -2,24 +2,27 @@ package main
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 
 	awslambda "github.com/aws/aws-lambda-go/lambda"
 	"github.com/flashbots/prometheus-sns-lambda-slack/config"
 	"github.com/flashbots/prometheus-sns-lambda-slack/processor"
+	"github.com/flashbots/prometheus-sns-lambda-slack/secret"
 	"github.com/urfave/cli/v2"
 )
 
 var (
-	defaultSlackToken = "" // Injected at build-time
+	defaultSlackToken = "" // can be injected at build-time
 	rawIgnoreRules    = ""
 )
 
 var (
-	ErrDynamoDBMissing       = errors.New("DynamoDB name must be configured")
-	ErrSlackAPITokenMissing  = errors.New("Slack API token must be provided")
-	ErrSlackChannelIDMissing = errors.New("Slack channel ID must be configured")
-	ErrSlackChannelMissing   = errors.New("Slack channel name must be configured")
+	ErrDynamoDBMissing       = errors.New("dynamo db name must be configured")
+	ErrSecretMissingKey      = errors.New("secret manager misses key")
+	ErrSlackAPITokenMissing  = errors.New("slack API token must be provided")
+	ErrSlackChannelIDMissing = errors.New("slack channel ID must be configured")
+	ErrSlackChannelMissing   = errors.New("slack channel name must be configured")
 )
 
 func CommandLambda(cfg *config.Config) *cli.Command {
@@ -65,6 +68,21 @@ func CommandLambda(cfg *config.Config) *cli.Command {
 		},
 
 		Before: func(_ *cli.Context) error {
+			// read secrets (if applicable)
+			if strings.HasPrefix(cfg.Slack.Token, "arn:aws:secretsmanager:") {
+				s, err := secret.AWS(cfg.Slack.Token)
+				if err != nil {
+					return err
+				}
+				slackToken, exists := s["SLACK_TOKEN"]
+				if !exists {
+					return fmt.Errorf("%w: %s: %s",
+						ErrSecretMissingKey, cfg.Slack.Token, "SLACK_TOKEN",
+					)
+				}
+				cfg.Slack.Token = slackToken
+			}
+
 			// validate inputs
 			if cfg.Processor.DynamoDBName == "" {
 				return ErrDynamoDBMissing
